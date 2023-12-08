@@ -494,7 +494,6 @@ class ProxyState:
                     should_check_drain = self._last_drain_check_time is None or (
                         self._timer.time() - self._last_drain_check_time >= PROXY_DRAIN_CHECK_PERIOD_S
                     )
-
                     if should_check_drain:
                         is_drained_response = self._actor_proxy_wrapper.is_drained()
                         if is_drained_response is not None:
@@ -734,7 +733,7 @@ class ProxyStateManager:
                 to_stop.append(node_id)
             elif proxy_state.status == ProxyStatus.UNHEALTHY:
                 logger.info(
-                    f"Proxy on node '{node_id}' UNHEALTHY. Shutting down "
+                    f"Proxy on node '{node_id}' is unhealthy. Shutting down "
                     "the unhealthy proxy and starting a new one."
                 )
                 to_stop.append(node_id)
