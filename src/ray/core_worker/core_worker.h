@@ -794,6 +794,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const rpc::Address &caller_address,
       int64_t item_index,
       uint64_t attempt_number,
+      std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
       std::shared_ptr<GeneratorBackpressureWaiter> waiter);
 
   /// Implements gRPC server handler.
@@ -1806,6 +1807,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// the checking and increasing of backpressure pending calls counter
   /// is not atomic, which may lead to under counting or over counting.
   absl::Mutex actor_task_mutex_;
+
+  absl::Mutex generator_returns_mutex_;
 
   /// A shared pointer between various components that emitting task state events.
   /// e.g. CoreWorker, TaskManager.
