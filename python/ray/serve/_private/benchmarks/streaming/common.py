@@ -56,7 +56,11 @@ class Endpoint:
         )
 
         for i in range(self._tokens_per_request):
+            print("[DBG] stream before yield")
+
             yield payload
+
+            print("[DBG] stream after yield")
 
 
 class Caller(Blackhole):

@@ -157,11 +157,21 @@ class ObjectRefStream {
   absl::flat_hash_set<ObjectID> GetItemsUnconsumed() const;
 
   /// \return Index of the last consumed item, -1 if nothing is consumed yet.
-  int64_t LastConsumedIndex() const { return next_index_ - 1; }
+  int64_t LastConsumedIndex() const {
+    absl::ReaderMutexLock lock(&mu_);
+    return next_index_ - 1;
+  }
 
   /// Total number of object that's written to the stream
-  int64_t TotalNumObjectWritten() const { return total_num_object_written_; }
-  int64_t TotalNumObjectConsumed() const { return total_num_object_consumed_; }
+  int64_t TotalNumObjectWritten() const {
+    absl::ReaderMutexLock lock(&mu_);
+    return total_num_object_written_;
+  }
+
+  int64_t TotalNumObjectConsumed() const {
+    absl::ReaderMutexLock lock(&mu_);
+    return total_num_object_consumed_;
+  }
 
  private:
   ObjectID GetObjectRefAtIndex(int64_t generator_index) const;
@@ -169,27 +179,30 @@ class ObjectRefStream {
   const ObjectID generator_id_;
   const TaskID generator_task_id_;
 
+  /// The lock to protect the stream mutable fields
+  mutable absl::Mutex mu_;
+
   /// Refs that are temporarily owned. It means a ref is
   /// written to a stream, but index is not known yet.
-  absl::flat_hash_set<ObjectID> temporarily_owned_refs_;
+  absl::flat_hash_set<ObjectID> temporarily_owned_refs_ ABSL_GUARDED_BY(mu_);
   // A set of refs that's already written to a stream -> size of the object.
-  absl::flat_hash_set<ObjectID> refs_written_to_stream_;
+  absl::flat_hash_set<ObjectID> refs_written_to_stream_ ABSL_GUARDED_BY(mu_);
   /// The last index of the stream.
   /// item_index < last will contain object references.
   /// If -1, that means the stream hasn't reached to EoF.
-  int64_t end_of_stream_index_ = -1;
+  int64_t end_of_stream_index_ ABSL_GUARDED_BY(mu_) = -1;
   /// The next index of the stream.
   /// If next_index_ == end_of_stream_index_, that means it is the end of the stream.
-  int64_t next_index_ = 0;
+  int64_t next_index_ ABSL_GUARDED_BY(mu_) = 0;
   /// The maximum index that we have seen from the executor. We need to track
   /// this in case the first execution fails mid-generator, and the second task
   /// ends with fewer returns. Then, we mark one past this index as the end of
   /// the stream.
-  int64_t max_index_seen_ = -1;
+  int64_t max_index_seen_ ABSL_GUARDED_BY(mu_) = -1 ;
   /// The total number of the objects that are written to stream.
-  int64_t total_num_object_written_;
+  int64_t total_num_object_written_ ABSL_GUARDED_BY(mu_);
   /// The total number of the objects that are consumed from stream.
-  int64_t total_num_object_consumed_;
+  int64_t total_num_object_consumed_ ABSL_GUARDED_BY(mu_);
 };
 
 class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterface {
@@ -793,7 +806,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   std::shared_ptr<ReferenceCounter> reference_counter_;
 
   /// Mapping from a streaming generator task id -> object ref stream.
-  absl::flat_hash_map<ObjectID, ObjectRefStream> object_ref_streams_
+  absl::flat_hash_map<ObjectID, std::shared_ptr<ObjectRefStream>> object_ref_streams_
       ABSL_GUARDED_BY(objet_ref_stream_ops_mu_);
 
   /// The consumer side of object ref stream should signal the executor
