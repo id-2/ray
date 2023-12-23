@@ -1417,7 +1417,7 @@ cdef create_generator_return_obj(
         return_object(out): A Ray Object that contains the given output.
     """
     cdef:
-        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] intermediate_result
+        c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] intermediate_result = c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]](1)
         CoreWorker core_worker = worker.core_worker
 
     return_id = core_worker.allocate_dynamic_return_id_for_generator(
