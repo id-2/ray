@@ -1,10 +1,14 @@
 import platform
+import shutil
 import subprocess
-from typing import List, Optional
+import tempfile
+from typing import List, Tuple, Optional
 
 from ci.ray_ci.utils import shard_tests, chunk_into_n
 from ci.ray_ci.utils import logger
 from ci.ray_ci.container import Container
+
+BAZEL_EVENT_LOGS = "/tmp/bazel_event_logs"
 
 
 class TesterContainer(Container):
@@ -41,6 +45,19 @@ class TesterContainer(Container):
         if not skip_ray_installation:
             self.install_ray(build_type)
 
+    def _get_bazel_log_dir(self) -> Tuple[str, str]:
+        """
+        Create a temporary directory in the current container to store bazel event logs
+        produced by the test runs. We do this by using the artifact mount directory from
+        the host machine as a shared directory between all containers.
+        """
+        artifact_host, artifact_container = self.get_artifact_mount()
+        bazel_log_dir_container = tempfile.mkdtemp(prefix=f"{artifact_container}/")
+        bazel_log_dir_host = bazel_log_dir_container.replace(
+            artifact_container, artifact_host
+        )
+        return (bazel_log_dir_host, bazel_log_dir_container)
+
     def run_tests(
         self,
         test_targets: List[str],
@@ -65,23 +82,43 @@ class TesterContainer(Container):
 
         # divide gpus evenly among chunks
         gpu_ids = chunk_into_n(list(range(self.gpus)), len(chunks))
+        (bazel_log_dir_host, bazel_log_dir_container) = self._get_bazel_log_dir()
         runs = [
-            self._run_tests_in_docker(chunks[i], gpu_ids[i], self.test_envs, test_arg)
+            self._run_tests_in_docker(
+                chunks[i], gpu_ids[i], bazel_log_dir_host, self.test_envs, test_arg
+            )
             for i in range(len(chunks))
         ]
         exits = [run.wait() for run in runs]
+        self.persist_test_results(bazel_log_dir_container)
+        # clean up so we don't pollute the host machine
+        shutil.rmtree(bazel_log_dir_container)
+
         return all(exit == 0 for exit in exits)
+
+    def persist_test_results(self, bazel_log_dir: str) -> None:
+        logger.info("Uploading test results")
+        self._upload_build_info(bazel_log_dir)
+
+    def _upload_build_info(self, bazel_log_dir) -> None:
+        subprocess.check_call(
+            [
+                "./ci/build/upload_build_info.sh",
+                bazel_log_dir,
+            ]
+        )
 
     def _run_tests_in_docker(
         self,
         test_targets: List[str],
         gpu_ids: List[int],
+        bazel_log_dir: str,
         test_envs: List[str],
         test_arg: Optional[str] = None,
     ) -> subprocess.Popen:
         logger.info("Running tests: %s", test_targets)
         commands = [
-            "cleanup() { ./ci/build/upload_build_info.sh; }",
+            f"cleanup() {{ chmod -R a+r {BAZEL_EVENT_LOGS}; }}",
             "trap cleanup EXIT",
         ]
         if platform.system() == "Windows":
@@ -119,5 +156,6 @@ class TesterContainer(Container):
                 commands,
                 network=self.network,
                 gpu_ids=gpu_ids,
+                volumes=[f"{bazel_log_dir}:{BAZEL_EVENT_LOGS}"],
             )
         )

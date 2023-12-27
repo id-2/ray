@@ -1,4 +1,3 @@
-awscli
 click
 colorama; platform_system == "Windows"
 pytest
