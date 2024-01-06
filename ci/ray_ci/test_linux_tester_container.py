@@ -23,8 +23,7 @@ class MockPopen:
         return 1 if "bad_test" in self.test_targets or not self.test_targets else 0
 
 
-@mock.patch.object(tempfile, "mkdtemp")
-def test_enough_gpus(tf) -> None:
+def test_enough_gpus() -> None:
     # not enough gpus
     try:
         LinuxTesterContainer("team", shard_count=2, gpus=1, skip_ray_installation=True)
@@ -72,8 +71,7 @@ def test_run_tests_in_docker(tf) -> None:
         assert "--gpus" not in input_str
 
 
-@mock.patch.object(tempfile, "mkdtemp")
-def test_run_script_in_docker(tf) -> None:
+def test_run_script_in_docker() -> None:
     def _mock_check_output(input: List[str]) -> None:
         input_str = " ".join(input)
         assert "/bin/bash -iecuo pipefail -- run command" in input_str
@@ -88,8 +86,7 @@ def test_run_script_in_docker(tf) -> None:
         container.run_script_with_output(["run command"])
 
 
-@mock.patch.object(tempfile, "mkdtemp")
-def test_skip_ray_installation(tf) -> None:
+def test_skip_ray_installation() -> None:
     install_ray_called = []
 
     def _mock_install_ray(build_type: Optional[str]) -> None:
@@ -106,8 +103,7 @@ def test_skip_ray_installation(tf) -> None:
         assert len(install_ray_called) == 1
 
 
-@mock.patch.object(tempfile, "mkdtemp")
-def test_ray_installation(tf) -> None:
+def test_ray_installation() -> None:
     install_ray_cmds = []
 
     def _mock_subprocess(inputs: List[str], env, stdout, stderr) -> None:
@@ -169,13 +165,6 @@ def test_run_tests(tf) -> None:
         assert container.run_tests([], [])
         # test targets contain bad_test
         assert not container.run_tests(["bad_test"], [])
-
-def test_init_bazel_log_dir() -> None:
-    with mock.patch("tempfile.mkdtemp", return_value="/artifact-mount/123"):
-        container = LinuxTesterContainer("team", skip_ray_installation=True)
-        assert container.bazel_log_dir == f"/artifact-mount/123"
-        assert "/tmp/artifacts:/artifact-mount" in container.volumes
-        assert "/tmp/artifacts/123:/tmp/bazel_event_logs" in container.volumes
 
 
 def test_init_bazel_log_dir() -> None:
